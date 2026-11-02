@@ -117,6 +117,8 @@
       gistId = await store.create(data);
       localStorage.setItem(GIST_STORAGE, gistId);
       localStorage.setItem(SYNCED_STORAGE, String(pushedAt));
+      // The new gist holds this data, so a restore waiting to be pushed is done.
+      localStorage.removeItem(FORCE_PUSH_STORAGE);
       return false;
     }
     localStorage.setItem(GIST_STORAGE, gistId);
@@ -887,7 +889,10 @@
           const [file] = fileInput.files;
           if (!file) return;
           try {
-            const backup = parseBackup(await file.text());
+            const text = await file.text();
+            // Otherwise the browser ignores picking the same file again.
+            fileInput.value = '';
+            const backup = parseBackup(text);
             if (!confirm('Заменить текущие отметки и рейтинг данными из файла?')) return;
             data = backup;
             // A restore is a deliberate overwrite: it has to beat what the gist holds.
