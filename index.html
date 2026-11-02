@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#14161a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Мои фильмы">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Мои фильмы</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #14161a;
+    --panel: #1f2329;
+    --line: #333942;
+    --text: #eceef1;
+    --muted: #9aa3ae;
+    --seen: #3ecf8e;
+    --unseen: #f0616d;
+    --accent: #6ea8fe;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.4 system-ui, sans-serif;
+    overscroll-behavior-x: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { max-width: 960px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  a { color: var(--accent); }
+  button, input, select {
+    font: inherit;
+    color: inherit;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button:disabled { opacity: .5; cursor: default; }
+  input { width: 100%; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .error { color: var(--unseen); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .spread { justify-content: space-between; }
+  .stack > * + * { margin-top: 12px; }
+  .tab[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+  .people {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 12px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  /* Кнопка центрирует содержимое по вертикали: без flex фото съезжает вниз, если имя соседа длиннее. */
+  .person {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+    text-align: left;
+  }
+  .person.done { opacity: .55; }
+  .person img, .person .nophoto {
+    display: block;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    background: var(--line);
+  }
+  .person .caption { display: block; padding: 8px; }
+
+  .card {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    touch-action: pan-y;
+    user-select: none;
+    cursor: grab;
+  }
+  .card.flying { transition: transform .15s ease-out, opacity .15s ease-out; opacity: 0; }
+  .card img, .card .noposter {
+    display: block;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    background: var(--line);
+    pointer-events: none;
+  }
+  .noposter { display: grid !important; place-items: center; color: var(--muted); }
+  .card .info { padding: 12px; }
+  .card h2 { font-size: 18px; margin: 0; }
+  .stamp {
+    position: absolute;
+    top: 16px;
+    padding: 4px 10px;
+    border: 3px solid;
+    border-radius: 8px;
+    font-weight: 700;
+    background: rgba(0, 0, 0, .6);
+    opacity: 0;
+  }
+  .stamp.seen { left: 16px; color: var(--seen); }
+  .stamp.unseen { right: 16px; color: var(--unseen); }
+  .actions { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; margin-top: 12px; }
+  .actions .yes { color: var(--seen); }
+  .actions .no { color: var(--unseen); }
+
+  /* The poster gives way to the window height; the bucket buttons keep their width. */
+  .sort { max-width: 360px; margin: 0 auto; }
+  .card.still { cursor: default; }
+  .prompt { color: var(--seen); font-size: 14px; }
+  .buckets.asking button { border-color: var(--seen); }
+  .card.fit img, .card.fit .noposter {
+    height: min(540px, calc(100vh - 390px));
+    /* On a phone 100vh ignores the address bar; dvh counts what is really visible. */
+    height: min(540px, calc(100dvh - 390px));
+    min-height: 160px;
+    aspect-ratio: auto;
+    object-fit: contain;
+    background: transparent;
+  }
+  .buckets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* Width follows the window height so both posters and the undo button stay on screen. */
+  .compare { max-width: min(720px, calc((100vh - 300px) * 4 / 3)); min-width: 300px; margin: 0 auto; }
+  @supports (height: 100dvh) {
+    .compare { max-width: min(720px, calc((100dvh - 300px) * 4 / 3)); }
+  }
+  .center { text-align: center; }
+  .versus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .versus {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 0 0 10px;
+    overflow: hidden;
+    border-radius: 12px;
+    text-align: center;
+  }
+  .versus:hover { border-color: var(--accent); }
+  .versus img, .versus .noposter {
+    display: block;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    background: var(--line);
+  }
+  .versus-title { padding: 4px 8px 0; font-weight: 600; }
+
+  .primary { border-color: var(--accent); color: var(--accent); }
+  .group-title { font-size: 16px; margin: 20px 0 0; }
+  .film-list { list-style: none; margin: 0; padding: 0; }
+  .film-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .rank { width: 2.2em; text-align: right; font-weight: 700; color: var(--accent); }
+  .thumb { width: 46px; flex: none; }
+  .thumb img, .thumb .noposter {
+    display: block;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--line);
+    font-size: 0;
+  }
+  .film-meta { flex: 1 1 160px; min-width: 0; }
+  .film-row button, .film-row select { padding: 4px 8px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script src="logic.js"></script>
+<script src="sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
