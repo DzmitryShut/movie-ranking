@@ -57,15 +57,19 @@
     return !(film.genre_ids || []).includes(DOCUMENTARY_GENRE);
   }
 
+  // A director's films include the ones they only produced.
+  const DIRECTOR_JOBS = new Set(['Director', 'Producer']);
+
   function sourceFilms(credits, role) {
     return role === 'director'
-      ? (credits.crew || []).filter((film) => film.job === 'Director')
+      ? (credits.crew || []).filter((film) => DIRECTOR_JOBS.has(film.job))
       : (credits.cast || []).filter(isActingRole);
   }
 
   // Колода человека: ещё не отмеченные вышедшие фильмы, самые известные сверху.
   function buildDeck(credits, role, answers, today) {
     const deck = new Map();
+    const directed = new Set((credits.crew || []).filter((film) => film.job === 'Director').map((film) => film.id));
     for (const film of sourceFilms(credits, role)) {
       if (film.adult || answers[film.id] || deck.has(film.id)) continue;
       if (!film.release_date || film.release_date > today) continue;
@@ -77,6 +81,7 @@
         year: film.release_date.slice(0, 4),
         poster: film.poster_path || null,
         votes: film.vote_count,
+        ...(role === 'director' && !directed.has(film.id) ? { producedOnly: true } : {}),
       });
     }
     return [...deck.values()].sort((a, b) => b.votes - a.votes);

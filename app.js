@@ -615,9 +615,9 @@
       const seenStamp = h('span', { class: 'stamp seen', textContent: 'ВИДЕЛ' });
       const unseenStamp = h('span', { class: 'stamp unseen', textContent: 'НЕ ВИДЕЛ' });
       seenStamp.style.opacity = asking ? 1 : 0;
-      const yearLine = film.originalTitle && film.originalTitle !== film.title
+      const yearLine = (film.originalTitle && film.originalTitle !== film.title
         ? `${film.originalTitle}, ${film.year}`
-        : film.year;
+        : film.year) + (film.producedOnly ? ' · продюсер' : '');
       const card = h('article', { class: 'card fit' },
         poster(film, 'w500'),
         seenStamp,

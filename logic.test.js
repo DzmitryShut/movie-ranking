@@ -54,14 +54,25 @@ test('aggregatePeople не считает человека дважды за о�
   assert.equal(directors[0].count, 1);
 });
 
-test('buildDeck берёт для режиссёра только режиссуру', () => {
+test('buildDeck берёт для режиссёра режиссуру и продюсирование, но не другие работы', () => {
   const deck = buildDeck(
-    { crew: [film(1, { job: 'Director' }), film(2, { job: 'Producer' })], cast: [film(3)] },
+    {
+      crew: [
+        film(1, { job: 'Producer', vote_count: 300 }),
+        film(1, { job: 'Director', vote_count: 300 }),
+        film(2, { job: 'Producer', vote_count: 200 }),
+        film(4, { job: 'Executive Producer' }),
+        film(5, { job: 'Writer' }),
+      ],
+      cast: [film(3)],
+    },
     'director',
     {},
     TODAY,
   );
-  assert.deepEqual(deck.map((f) => f.id), [1]);
+  assert.deepEqual(deck.map((f) => f.id), [1, 2]);
+  assert.equal(deck[0].producedOnly, undefined);
+  assert.equal(deck[1].producedOnly, true);
 });
 
 test('buildDeck убирает документальное кино и камео актёра в роли себя', () => {
@@ -361,10 +372,11 @@ test('personGroups показывает только фильмы человек
   };
   const groups = personGroups(credits, 'director', answers, [2, 1, 3]);
 
-  assert.deepEqual(groups.map((g) => g.id), ['top', 'good', null]);
+  assert.deepEqual(groups.map((g) => g.id), ['top', 'good', 'bad', null]);
   assert.deepEqual(groups[0].films.map((f) => [f.id, f.rank]), [[1, 2], [3, 3]]);
   assert.deepEqual(groups[1].films.map((f) => f.id), [4]);
-  assert.deepEqual(groups[2].films.map((f) => f.id), [5]);
+  assert.deepEqual(groups[2].films.map((f) => f.id), [7]);
+  assert.deepEqual(groups[3].films.map((f) => f.id), [5]);
 });
 
 test('personGroups для актёра берёт только его роли', () => {
