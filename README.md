@@ -13,6 +13,19 @@ Nothing personal lives in this repository. Each device keeps its own data:
 
 If two devices change data before they can sync, each film keeps its latest answer and the newer device's ranking wins. Top-bucket films ranked only on the other device go back to waiting for comparisons.
 
+## Home server
+
+The same app can also run on a home computer and be reached only from your own devices over [Tailscale](https://tailscale.com). Opened that way, it keeps the data in one file on that computer and needs no GitHub token.
+
+```sh
+node server.js                          # http://127.0.0.1:8417, data in %LOCALAPPDATA%\movie-ranking
+tailscale serve --bg http://127.0.0.1:8417
+```
+
+The server listens only on `127.0.0.1`; `tailscale serve` publishes it over HTTPS at `https://<machine>.<tailnet>.ts.net`, reachable only inside your tailnet. `PORT` and `DATA_DIR` override the defaults. The first copy of the data each day is kept in `backups` next to it, for the last 30 days.
+
+Each device still keeps a copy in `localStorage` and catches up when the server is reachable again.
+
 ## Tests
 
 ```sh

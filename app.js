@@ -30,11 +30,13 @@
   const SWIPE_DISTANCE = 100;
   const TMDB_NOTICE = 'This product uses the TMDB API but is not endorsed or certified by TMDB.';
 
-  const { createGistStore, SyncAuthError } = window.MovieSync;
+  const { createGistStore, createServerStore, detectServer, SyncAuthError } = window.MovieSync;
   const TOKEN_STORAGE = 'movie-ranking:github-token';
   const GIST_STORAGE = 'movie-ranking:gist-id';
   const SYNCED_STORAGE = 'movie-ranking:synced-at';
   const FORCE_PUSH_STORAGE = 'movie-ranking:force-push';
+  // Set once the page is seen served by the home server; kept so being offline doesn't switch sync off.
+  const SERVER_STORAGE = 'movie-ranking:home-server';
   const SYNC_DEBOUNCE = 2000;
   const STARTUP_SYNC_WAIT = 4000;
   const TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=gist&description=Movie%20ranking';
@@ -98,8 +100,22 @@
     onSyncStatus();
   }
 
+  function onHomeServer() {
+    return Boolean(localStorage.getItem(SERVER_STORAGE));
+  }
+
+  function syncEnabled() {
+    return onHomeServer() || Boolean(localStorage.getItem(TOKEN_STORAGE));
+  }
+
+  function createStore() {
+    const fetchImpl = (...args) => fetch(...args);
+    if (onHomeServer()) return createServerStore({ fetchImpl });
+    return createGistStore({ token: localStorage.getItem(TOKEN_STORAGE), fetchImpl });
+  }
+
   function scheduleSync(delay = SYNC_DEBOUNCE) {
-    if (!localStorage.getItem(TOKEN_STORAGE)) return;
+    if (!syncEnabled()) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(runSync, delay);
   }
@@ -137,7 +153,7 @@
       remote = parseBackup(text);
     } catch {
       // Never overwrite what can't be understood: the user may want it back.
-      throw new Error('данные в gist повреждены, отметки на этом устройстве не тронуты');
+      throw new Error('сохранённые данные повреждены, отметки на этом устройстве не тронуты');
     }
     // The user changed something while the request was on its way: look again.
     if (data.updatedAt !== localAt) {
@@ -171,8 +187,7 @@
   }
 
   async function runSync() {
-    const token = localStorage.getItem(TOKEN_STORAGE);
-    if (!token) return;
+    if (!syncEnabled()) return;
     if (syncRunning) {
       syncAgain = true;
       return;
@@ -182,7 +197,7 @@
     setSyncStatus('running', '');
     let dataReplaced = false;
     try {
-      dataReplaced = await syncOnce(createGistStore({ token, fetchImpl: (...args) => fetch(...args) }));
+      dataReplaced = await syncOnce(createStore());
       const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       setSyncStatus('ok', `Синхронизировано в ${time}`);
     } catch (error) {
@@ -911,6 +926,18 @@
     const syncBox = h('div', { class: 'stack' });
 
     function renderSync() {
+      if (onHomeServer()) {
+        syncLine.className = syncStatus.state === 'error' ? 'error' : 'muted';
+        syncLine.textContent = {
+          running: 'Синхронизирую…',
+          ok: syncStatus.message,
+          error: syncStatus.message,
+          idle: 'Данные хранятся на домашнем сервере',
+        }[syncStatus.state];
+        syncBox.replaceChildren(h('div', { class: 'row' },
+          h('button', { textContent: 'Синхронизировать сейчас', on: { click: runSync } })));
+        return;
+      }
       const connected = Boolean(localStorage.getItem(TOKEN_STORAGE));
       syncLine.className = syncStatus.state === 'error' ? 'error' : 'muted';
       syncLine.textContent = {
@@ -998,7 +1025,10 @@
   });
 
   async function start() {
-    if (localStorage.getItem(TOKEN_STORAGE)) {
+    if (!onHomeServer() && await detectServer({ fetchImpl: (...args) => fetch(...args) })) {
+      localStorage.setItem(SERVER_STORAGE, '1');
+    }
+    if (syncEnabled()) {
       show(h('p', { class: 'muted', textContent: 'Синхронизирую…' }));
       await Promise.race([runSync(), wait(STARTUP_SYNC_WAIT)]);
     }

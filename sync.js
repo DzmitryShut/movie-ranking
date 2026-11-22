@@ -78,7 +78,57 @@
     return { find, create, read, write };
   }
 
-  const api = { createGistStore, SyncAuthError, FILE, DESCRIPTION };
+  // The same store shape over the home server (server.js), which keeps one copy of the data.
+  const SERVER_ID = 'server';
+
+  function createServerStore({ fetchImpl, base = 'api/' }) {
+    async function request(options = {}) {
+      return fetchImpl(base + 'data', { ...options, cache: 'no-store' });
+    }
+
+    async function expectOk(response) {
+      if (!response.ok) throw new Error(`сервер ответил ошибкой ${response.status}`);
+    }
+
+    async function read() {
+      const response = await request();
+      if (response.status === 404) return null;
+      await expectOk(response);
+      return response.text();
+    }
+
+    async function write(id, data) {
+      await expectOk(await request({
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }));
+    }
+
+    async function find() {
+      return (await read()) === null ? null : SERVER_ID;
+    }
+
+    async function create(data) {
+      await write(SERVER_ID, data);
+      return SERVER_ID;
+    }
+
+    return { find, create, read, write };
+  }
+
+  // True when the page is served by server.js rather than by a static host.
+  async function detectServer({ fetchImpl, base = 'api/' }) {
+    try {
+      const response = await fetchImpl(base + 'health', { cache: 'no-store' });
+      if (!response.ok) return false;
+      return (await response.json()).app === 'movie-ranking';
+    } catch {
+      return false;
+    }
+  }
+
+  const api = { createGistStore, createServerStore, detectServer, SyncAuthError, FILE, DESCRIPTION };
   root.MovieSync = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);
