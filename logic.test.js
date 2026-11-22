@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const {
   aggregatePeople,
   buildDeck,
-  markedCount,
+  personFilms,
+  personProgress,
   seenFilms,
   unsortedFilms,
   pendingFilms,
@@ -76,18 +77,29 @@ test('buildDeck берёт для режиссёра режиссуру и пр�
   assert.equal(deck[1].producedOnly, true);
 });
 
-test('markedCount считает отмеченные фильмы человека один раз, видел он их или нет', () => {
+test('personProgress: отмеченные считаются один раз, видел или нет; осталось совпадает с колодой', () => {
   const credits = {
-    crew: [film(1, { job: 'Director' }), film(1, { job: 'Producer' }), film(2, { job: 'Producer' }), film(3, { job: 'Director' })],
+    crew: [
+      film(1, { job: 'Director' }),
+      film(1, { job: 'Producer' }),
+      film(2, { job: 'Producer' }),
+      film(3, { job: 'Director' }),
+      film(5, { job: 'Director', vote_count: 1 }),
+      film(6, { job: 'Director', release_date: '2030-01-01' }),
+    ],
     cast: [film(4)],
   };
   const answers = {
     1: { status: 'seen', at: 1 },
     2: { status: 'unseen', at: 2 },
     4: { status: 'seen', at: 3 },
+    // Отмечен в чужой колоде, хотя в колоду этого человека не попал бы.
+    5: { status: 'seen', at: 4 },
   };
-  assert.equal(markedCount(credits, 'director', answers), 2);
-  assert.equal(markedCount(credits, 'actor', answers), 1);
+  const films = personFilms(credits, 'director', TODAY);
+  assert.deepEqual(personProgress(films, answers), { marked: 3, left: 1 });
+  assert.equal(personProgress(films, answers).left, buildDeck(credits, 'director', answers, TODAY).length);
+  assert.deepEqual(personProgress(personFilms(credits, 'actor', TODAY), answers), { marked: 1, left: 0 });
 });
 
 test('buildDeck убирает документальное кино и камео актёра в роли себя', () => {

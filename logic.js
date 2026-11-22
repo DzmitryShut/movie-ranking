@@ -66,14 +66,17 @@
       : (credits.cast || []).filter(isActingRole);
   }
 
+  function isDeckFilm(film, today) {
+    if (film.adult || !film.release_date || film.release_date > today) return false;
+    return (film.vote_count || 0) >= MIN_VOTES;
+  }
+
   // Колода человека: ещё не отмеченные вышедшие фильмы, самые известные сверху.
   function buildDeck(credits, role, answers, today) {
     const deck = new Map();
     const directed = new Set((credits.crew || []).filter((film) => film.job === 'Director').map((film) => film.id));
     for (const film of sourceFilms(credits, role)) {
-      if (film.adult || answers[film.id] || deck.has(film.id)) continue;
-      if (!film.release_date || film.release_date > today) continue;
-      if ((film.vote_count || 0) < MIN_VOTES) continue;
+      if (answers[film.id] || deck.has(film.id) || !isDeckFilm(film, today)) continue;
       deck.set(film.id, {
         id: film.id,
         title: film.title,
@@ -87,9 +90,21 @@
     return [...deck.values()].sort((a, b) => b.votes - a.votes);
   }
 
-  // Сколько фильмов человека уже отмечено, в том числе из колод других людей.
-  function markedCount(credits, role, answers) {
-    return new Set(sourceFilms(credits, role).filter((film) => answers[film.id]).map((film) => film.id)).size;
+  // Только номера фильмов человека: столько хватает для счётчиков, и это мало места в localStorage.
+  function personFilms(credits, role, today) {
+    const films = sourceFilms(credits, role);
+    return {
+      all: [...new Set(films.map((film) => film.id))],
+      deck: [...new Set(films.filter((film) => isDeckFilm(film, today)).map((film) => film.id))],
+    };
+  }
+
+  // Отмечено считает и фильмы из колод других людей; осталось совпадает с колодой.
+  function personProgress(films, answers) {
+    return {
+      marked: films.all.filter((id) => answers[id]).length,
+      left: films.deck.filter((id) => !answers[id]).length,
+    };
   }
 
   function seenFilms(answers) {
@@ -246,7 +261,8 @@
     BUCKETS,
     aggregatePeople,
     buildDeck,
-    markedCount,
+    personFilms,
+    personProgress,
     seenFilms,
     unsortedFilms,
     pendingFilms,

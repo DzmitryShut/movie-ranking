@@ -3,7 +3,8 @@
     BUCKETS,
     aggregatePeople,
     buildDeck,
-    markedCount,
+    personFilms,
+    personProgress,
     seenFilms,
     unsortedFilms,
     pendingFilms,
@@ -25,6 +26,9 @@
   const KEY_STORAGE = 'movie-ranking:key';
   const DATA_STORAGE = 'movie-ranking:data';
   const PEOPLE_STORAGE = 'movie-ranking:people';
+  // Film numbers of each person seen in the list, for the counters on their tiles.
+  const FILMS_STORAGE = 'movie-ranking:person-films';
+  const FILMS_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
   const WORLD_PAGES = 15;
   const RUSSIAN_PAGES = 3;
   const CONCURRENCY = 8;
@@ -52,6 +56,10 @@
   let syncAgain = false;
   let syncStatus = { state: 'idle', message: '' };
   let onSyncStatus = () => {};
+  let filmsCache = loadFilmsCache();
+  const filmsLoading = new Map();
+  let freeSlots = CONCURRENCY;
+  const slotQueue = [];
 
   function loadData() {
     try {
@@ -290,6 +298,62 @@
     return results;
   }
 
+  function loadFilmsCache() {
+    try {
+      return JSON.parse(localStorage.getItem(FILMS_STORAGE)) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function today() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function rememberFilms(role, id, credits) {
+    const films = personFilms(credits, role, today());
+    const now = Date.now();
+    filmsCache = Object.fromEntries(Object.entries(filmsCache).filter(([, entry]) => now - entry.at < FILMS_MAX_AGE));
+    filmsCache[`${role}:${id}`] = { at: now, ...films };
+    try {
+      localStorage.setItem(FILMS_STORAGE, JSON.stringify(filmsCache));
+    } catch (error) {
+      // Out of room: the counters still work until the page is reloaded.
+      console.error(error);
+    }
+    return films;
+  }
+
+  // Keeps the tile counters from flooding TMDB when a long list scrolls by.
+  async function limited(task) {
+    if (freeSlots > 0) freeSlots -= 1;
+    else await new Promise((resolve) => slotQueue.push(resolve));
+    try {
+      return await task();
+    } finally {
+      const next = slotQueue.shift();
+      if (next) next();
+      else freeSlots += 1;
+    }
+  }
+
+  // Resolves the person's films, or null if TMDB could not give them.
+  function filmsOf(role, id) {
+    const key = `${role}:${id}`;
+    const cached = filmsCache[key];
+    if (cached && Date.now() - cached.at < FILMS_MAX_AGE) return Promise.resolve(cached);
+    if (!filmsLoading.has(key)) {
+      filmsLoading.set(key, limited(() => tmdb(`/person/${id}/movie_credits`))
+        .then((credits) => rememberFilms(role, id, credits))
+        .catch((error) => {
+          console.error(error);
+          return null;
+        })
+        .finally(() => filmsLoading.delete(key)));
+    }
+    return filmsLoading.get(key);
+  }
+
   function pages(count, params) {
     return Array.from({ length: count }, (_, index) => ({ ...params, page: index + 1 }));
   }
@@ -399,17 +463,38 @@
       return personTab === 'directors' ? 'director' : 'actor';
     }
 
+    let observer = null;
+
     function renderList(items) {
+      if (observer) observer.disconnect();
+      const counters = new Map();
+      // Counters load only for tiles that come into view.
+      observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          observer.unobserve(entry.target);
+          counters.get(entry.target)();
+        }
+      }, { rootMargin: '300px' });
       list.replaceChildren(...items.map(({ person, role }) => {
         const done = data.done[`${role}:${person.id}`];
-        return h('li', {}, h('button', {
+        const count = h('span', { class: 'count' });
+        const tile = h('button', {
           class: done ? 'person done' : 'person',
           on: { click: () => showDeck(person, role, tab) },
         },
         person.photo
           ? h('img', { src: imageUrl(person.photo, 'w185'), alt: '', loading: 'lazy' })
           : h('span', { class: 'nophoto' }),
-        h('span', { class: 'caption', textContent: done ? `${person.name} ✓` : person.name })));
+        h('span', { class: 'caption' }, done ? `${person.name} ✓` : person.name, count));
+        counters.set(tile, async () => {
+          const films = await filmsOf(role, person.id);
+          if (!films) return;
+          const { marked, left } = personProgress(films, data.answers);
+          count.textContent = `отмечено ${marked}, осталось ${left}`;
+        });
+        observer.observe(tile);
+        return h('li', {}, tile);
       }));
     }
 
@@ -475,11 +560,12 @@
       failure(error, () => showDeck(person, role, backTab));
       return;
     }
+    rememberFilms(role, person.id, credits);
     renderDeck(person, role, credits, backTab);
   }
 
   function renderDeck(person, role, credits, backTab) {
-    const today = new Date().toISOString().slice(0, 10);
+    const films = personFilms(credits, role, today());
     const doneKey = `${role}:${person.id}`;
     const history = [];
     let busy = false;
@@ -585,7 +671,7 @@
     }
 
     function render() {
-      const deck = buildDeck(credits, role, data.answers, today);
+      const deck = buildDeck(credits, role, data.answers, today());
       // Галочка актуальна, только пока нечего отмечать: фильм могли убрать из просмотренных.
       if (deck.length) delete data.done[doneKey];
       else data.done[doneKey] = true;
@@ -601,7 +687,7 @@
       if (!deck.length) {
         show(h('div', { class: 'stack' },
           h('div', { class: 'sort stack' },
-            top(`${person.name}: отмечено ${markedCount(credits, role, data.answers)}`),
+            top(`${person.name}: отмечено ${personProgress(films, data.answers).marked}`),
             h('p', { textContent: `Все фильмы отмечены: ${person.name}` }),
             h('div', { class: 'row' }, undoButton)),
           watchedSections()));
@@ -630,7 +716,7 @@
 
       show(h('div', { class: 'stack' },
         h('div', { class: 'sort stack' },
-          top(`${person.name}: отмечено ${markedCount(credits, role, data.answers)}, осталось ${deck.length}`),
+          top(`${person.name}: отмечено ${personProgress(films, data.answers).marked}, осталось ${deck.length}`),
           card,
           h('div', { class: asking ? 'buckets asking' : 'buckets' }, BUCKETS.map((bucket, index) => h('button', {
             textContent: `${index + 1}. ${bucket.label}`,
