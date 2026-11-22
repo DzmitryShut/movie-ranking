@@ -87,6 +87,11 @@
     return [...deck.values()].sort((a, b) => b.votes - a.votes);
   }
 
+  // Сколько фильмов человека уже отмечено, в том числе из колод других людей.
+  function markedCount(credits, role, answers) {
+    return new Set(sourceFilms(credits, role).filter((film) => answers[film.id]).map((film) => film.id)).size;
+  }
+
   function seenFilms(answers) {
     return Object.entries(answers)
       .filter(([, answer]) => answer.status === 'seen')
@@ -241,6 +246,7 @@
     BUCKETS,
     aggregatePeople,
     buildDeck,
+    markedCount,
     seenFilms,
     unsortedFilms,
     pendingFilms,

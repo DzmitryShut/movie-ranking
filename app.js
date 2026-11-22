@@ -3,6 +3,7 @@
     BUCKETS,
     aggregatePeople,
     buildDeck,
+    markedCount,
     seenFilms,
     unsortedFilms,
     pendingFilms,
@@ -600,7 +601,7 @@
       if (!deck.length) {
         show(h('div', { class: 'stack' },
           h('div', { class: 'sort stack' },
-            top(person.name),
+            top(`${person.name}: отмечено ${markedCount(credits, role, data.answers)}`),
             h('p', { textContent: `Все фильмы отмечены: ${person.name}` }),
             h('div', { class: 'row' }, undoButton)),
           watchedSections()));
@@ -629,7 +630,7 @@
 
       show(h('div', { class: 'stack' },
         h('div', { class: 'sort stack' },
-          top(`${person.name}: осталось ${deck.length}`),
+          top(`${person.name}: отмечено ${markedCount(credits, role, data.answers)}, осталось ${deck.length}`),
           card,
           h('div', { class: asking ? 'buckets asking' : 'buckets' }, BUCKETS.map((bucket, index) => h('button', {
             textContent: `${index + 1}. ${bucket.label}`,

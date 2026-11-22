@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   aggregatePeople,
   buildDeck,
+  markedCount,
   seenFilms,
   unsortedFilms,
   pendingFilms,
@@ -73,6 +74,20 @@ test('buildDeck берёт для режиссёра режиссуру и пр�
   assert.deepEqual(deck.map((f) => f.id), [1, 2]);
   assert.equal(deck[0].producedOnly, undefined);
   assert.equal(deck[1].producedOnly, true);
+});
+
+test('markedCount считает отмеченные фильмы человека один раз, видел он их или нет', () => {
+  const credits = {
+    crew: [film(1, { job: 'Director' }), film(1, { job: 'Producer' }), film(2, { job: 'Producer' }), film(3, { job: 'Director' })],
+    cast: [film(4)],
+  };
+  const answers = {
+    1: { status: 'seen', at: 1 },
+    2: { status: 'unseen', at: 2 },
+    4: { status: 'seen', at: 3 },
+  };
+  assert.equal(markedCount(credits, 'director', answers), 2);
+  assert.equal(markedCount(credits, 'actor', answers), 1);
 });
 
 test('buildDeck убирает документальное кино и камео актёра в роли себя', () => {
